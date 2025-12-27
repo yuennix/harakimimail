@@ -1,4 +1,5 @@
 
+
 // Yuen Dispo Mail - Disposable Email Generator
 class YuenDispoMail {
     constructor() {
