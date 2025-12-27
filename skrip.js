@@ -1,5 +1,4 @@
 
-
 // Yuen Dispo Mail - Disposable Email Generator
 class YuenDispoMail {
     constructor() {
@@ -17,30 +16,6 @@ class YuenDispoMail {
                 baseUrl: 'https://harakirimail.com/api/',
                 generateEmail: () => this.generateHarakiriEmail(),
                 getEmails: (email) => this.getHarakiriEmails(email)
-            },
-            {
-                name: 'TMailor',
-                baseUrl: 'https://tmailor.com/api/',
-                generateEmail: () => this.generateTMailorEmail(),
-                getEmails: (email) => this.getTMailorEmails(email)
-            },
-            {
-                name: 'MailCX',
-                baseUrl: 'https://api.mail.cx/',
-                generateEmail: () => this.generateMailCXEmail(),
-                getEmails: (email) => this.getMailCXEmails(email)
-            },
-            {
-                name: 'TempMailIO',
-                baseUrl: 'https://api.tempmail.io/',
-                generateEmail: () => this.generateTempMailIOEmail(),
-                getEmails: (email) => this.getTempMailIOEmails(email)
-            },
-            {
-                name: 'GuerillaMail',
-                baseUrl: 'https://api.guerrillamail.com/',
-                generateEmail: () => this.generateGuerrillaEmail(),
-                getEmails: (email) => this.getGuerrillaEmails(email)
             }
         ];
 
@@ -131,8 +106,14 @@ class YuenDispoMail {
         ];
 
         const domainSelect = document.getElementById('domainSelect');
-        domainSelect.innerHTML = '<option value="harakirimail.com">harakirimail.com</option>';
-        domainSelect.value = 'harakirimail.com';
+        domainSelect.innerHTML = '<option value="">Select Domain</option>';
+
+        this.availableDomains.forEach(domain => {
+            const option = document.createElement('option');
+            option.value = domain;
+            option.textContent = domain;
+            domainSelect.appendChild(option);
+        });
     }
 
     async generateEmail() {
@@ -142,41 +123,14 @@ class YuenDispoMail {
         btn.disabled = true;
 
         try {
-            const selectedDomain = document.getElementById('domainSelect').value;
             let email = null;
 
-            if (selectedDomain) {
-                // If a domain is selected, generate based on that domain
-                const username = this.generateRandomString(8) + Math.floor(Math.random() * 1000);
-                email = `${username}@${selectedDomain}`;
-            } else {
-                // Try HarakiriMail first
-                email = await this.generateHarakiriEmail();
+            // Try HarakiriMail
+            email = await this.generateHarakiriEmail();
 
-                if (!email) {
-                    // Try TMailor
-                    email = await this.generateTMailorEmail();
-                }
-
-                if (!email) {
-                    // Try MailCX
-                    email = await this.generateMailCXEmail();
-                }
-
-                if (!email) {
-                    // Try TempMailIO
-                    email = await this.generateTempMailIOEmail();
-                }
-
-                if (!email) {
-                    // Try GuerillaMail
-                    email = await this.generateGuerrillaEmail();
-                }
-
-                if (!email) {
-                    // Fallback to random email with working domain
-                    email = this.generateRandomEmail();
-                }
+            if (!email) {
+                // Fallback to random email with working domain
+                email = this.generateRandomEmail();
             }
 
             this.currentEmail = email;
@@ -209,7 +163,7 @@ class YuenDispoMail {
     }
 
     generateRandomEmail() {
-        const selectedDomain = 'harakirimail.com';
+        const selectedDomain = document.getElementById('domainSelect').value || 'harakirimail.com';
         const username = this.generateRandomString(8) + Math.floor(Math.random() * 1000);
         return `${username}@${selectedDomain}`;
     }
@@ -308,7 +262,7 @@ class YuenDispoMail {
     async fetchHarakiriCodesDirectly(email) {
         try {
             const [login] = email.split('@');
-
+            
             // Try multiple approaches to get HarakiriMail inbox
             const approaches = [
                 `https://harakirimail.com/inbox/${login}`,
@@ -320,13 +274,13 @@ class YuenDispoMail {
                 try {
                     // Use a CORS proxy service
                     const proxyResponse = await fetch(`https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(url)}`);
-
+                    
                     if (proxyResponse.ok) {
                         const html = await proxyResponse.text();
-
+                        
                         // Extract verification codes from HTML
                         const codes = this.extractVerificationCodes(html);
-
+                        
                         if (codes.length > 0) {
                             // Create a synthetic email with the codes
                             const codeEmail = {
@@ -337,7 +291,7 @@ class YuenDispoMail {
                                 time: new Date(),
                                 read: false
                             };
-
+                            
                             this.showEmailPopup(codeEmail);
                             break;
                         }
@@ -353,12 +307,61 @@ class YuenDispoMail {
 
     checkForNewEmails(newEmails) {
         const currentEmailKey = this.currentEmail;
+        const previousEmails = this.emailHistory.get(currentEmailKey) || [];
+
+        const newEmailIds = new Set(newEmails.map(e => e.id));
+        const previousEmailIds = new Set(previousEmails.map(e => e.id));
+
+        const reallyNewEmails = newEmails.filter(email => !previousEmailIds.has(email.id));
+
+        reallyNewEmails.forEach(email => {
+            this.showEmailPopup(email);
+        });
+
         this.emailHistory.set(currentEmailKey, newEmails);
     }
 
     showEmailPopup(email) {
-        // Function disabled: User requested no popup notifications
-        return;
+        const codes = this.extractVerificationCodes(email.content + ' ' + email.subject);
+
+        const popup = document.createElement('div');
+        popup.className = 'email-popup';
+        popup.innerHTML = `
+            <div class="popup-header">
+                <i class="fas fa-envelope"></i>
+                <span>New Email</span>
+                <button class="popup-close">&times;</button>
+            </div>
+            <div class="popup-content">
+                <div class="popup-from">From: ${this.escapeHtml(email.from)}</div>
+                <div class="popup-subject">${this.escapeHtml(this.truncateText(email.subject, 30))}</div>
+                ${codes.length > 0 ? `
+                    <div class="popup-codes">
+                        <strong>Codes:</strong>
+                        ${codes.map(code => `<span class="code-highlight" onclick="navigator.clipboard.writeText('${code}'); this.textContent = 'Copied!'">${code}</span>`).join('')}
+                    </div>
+                ` : ''}
+                <div class="popup-preview">${this.escapeHtml(this.truncateText(email.content, 60))}</div>
+            </div>
+        `;
+
+        document.body.appendChild(popup);
+
+        setTimeout(() => {
+            if (popup.parentNode) {
+                popup.remove();
+            }
+        }, 8000);
+
+        popup.querySelector('.popup-close').addEventListener('click', () => {
+            popup.remove();
+        });
+
+        popup.addEventListener('click', (e) => {
+            if (e.target === popup) {
+                popup.remove();
+            }
+        });
     }
 
     extractVerificationCodes(text) {
@@ -390,7 +393,7 @@ class YuenDispoMail {
                     // Clean the match
                     let cleanCode = match.replace(/^(code|verification|pin|token|confirm|activate|otp|is|verify|confirmation|facebook|instagram|twitter|gmail)[:\s]*/gi, '').trim();
                     cleanCode = cleanCode.replace(/[\s-]/g, ''); // Remove spaces and dashes
-
+                    
                     // Validate code length and format
                     if (cleanCode.length >= 4 && cleanCode.length <= 8 && /^[A-Z0-9]+$/i.test(cleanCode)) {
                         // Filter out common false positives
@@ -447,63 +450,52 @@ class YuenDispoMail {
     async getHarakiriEmails(email) {
         try {
             const [login] = email.split('@');
-
-            // Use a more reliable CORS proxy
+            
+            // Try to fetch using CORS proxy or direct access
+            const proxyUrl = 'https://api.allorigins.win/get?url=';
             const targetUrl = `https://harakirimail.com/inbox/${login}`;
-            const proxyUrls = [
-                `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`,
-                `https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(targetUrl)}`
-            ];
-
-            for (const url of proxyUrls) {
-                try {
-                    const response = await fetch(url);
-                    if (response.ok) {
-                        const data = await response.json();
-                        // allorigins returns content in 'contents', codetabs returns raw text
-                        const html = typeof data === 'string' ? data : data.contents;
-                        
-                        if (!html) continue;
-
-                        const parser = new DOMParser();
-                        const doc = parser.parseFromString(html, 'text/html');
-                        const emails = [];
-                        
-                        // HarakiriMail structure often uses a table or list of messages
-                        const rows = doc.querySelectorAll('table tr, .email-item, .message-row');
-                        
-                        rows.forEach((row, index) => {
-                            // Skip header rows if present
-                            if (row.querySelector('th')) return;
-                            
-                            const cells = row.querySelectorAll('td');
-                            if (cells.length >= 2) {
-                                const from = cells[0].textContent.trim();
-                                const subject = cells[1].textContent.trim();
-                                const timeStr = cells[2] ? cells[2].textContent.trim() : 'Just now';
-                                
-                                // Try to get the message ID from a link if available
-                                const link = row.querySelector('a');
-                                const id = link ? link.getAttribute('href') : `harakiri_${Date.now()}_${index}`;
-
-                                emails.push({
-                                    id: id,
-                                    from: from || 'Unknown Sender',
-                                    subject: subject || '(No Subject)',
-                                    content: `Subject: ${subject}. From: ${from}. Received: ${timeStr}. (Open HarakiriMail website for full HTML view if needed)`,
-                                    time: new Date(),
-                                    read: false
-                                });
-                            }
+            
+            const response = await fetch(proxyUrl + encodeURIComponent(targetUrl));
+            
+            if (response.ok) {
+                const data = await response.json();
+                const html = data.contents;
+                
+                // Parse HTML to extract emails
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(html, 'text/html');
+                
+                const emails = [];
+                const emailElements = doc.querySelectorAll('.email-item, .message, tr[data-id]');
+                
+                emailElements.forEach((element, index) => {
+                    const subjectEl = element.querySelector('.subject, .email-subject, td:nth-child(2)');
+                    const fromEl = element.querySelector('.from, .email-from, td:nth-child(1)');
+                    const timeEl = element.querySelector('.time, .email-time, td:nth-child(3)');
+                    
+                    if (subjectEl) {
+                        emails.push({
+                            id: `harakiri_${Date.now()}_${index}`,
+                            from: fromEl ? fromEl.textContent.trim() : 'Unknown',
+                            subject: subjectEl.textContent.trim() || 'No Subject',
+                            content: `Click to view full email content from ${login}@harakirimail.com`,
+                            time: new Date(),
+                            read: false
                         });
-
-                        if (emails.length > 0) return emails;
                     }
-                } catch (e) {
-                    console.warn(`Proxy ${url} failed`, e);
-                }
+                });
+                
+                return emails;
             }
+            
+            // Alternative approach - check if inbox page exists
+            const directResponse = await fetch(`https://harakirimail.com/inbox/${login}`, {
+                mode: 'no-cors'
+            });
+            
+            // If we can't fetch due to CORS, return empty array
             return [];
+            
         } catch (error) {
             console.error('HarakiriMail fetch error:', error);
             return [];
@@ -517,12 +509,12 @@ class YuenDispoMail {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' }
             });
-
+            
             if (response.ok) {
                 const data = await response.json();
                 return data.email;
             }
-
+            
             // Fallback generation
             const username = this.generateRandomString(10) + Math.floor(Math.random() * 9999);
             return `${username}@tmailor.com`;
@@ -535,7 +527,7 @@ class YuenDispoMail {
     async getTMailorEmails(email) {
         try {
             const response = await fetch(`https://tmailor.com/api/v1/email/${email}/messages`);
-
+            
             if (response.ok) {
                 const data = await response.json();
                 return (data.messages || []).map(msg => ({
@@ -560,12 +552,12 @@ class YuenDispoMail {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' }
             });
-
+            
             if (response.ok) {
                 const data = await response.json();
                 return data.email;
             }
-
+            
             // Fallback generation
             const username = this.generateRandomString(10) + Math.floor(Math.random() * 9999);
             return `${username}@mail.cx`;
@@ -579,7 +571,7 @@ class YuenDispoMail {
         try {
             const [login] = email.split('@');
             const response = await fetch(`https://api.mail.cx/api/v1/mailbox/${login}/messages`);
-
+            
             if (response.ok) {
                 const data = await response.json();
                 return (data.messages || []).map(msg => ({
@@ -604,12 +596,12 @@ class YuenDispoMail {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' }
             });
-
+            
             if (response.ok) {
                 const data = await response.json();
                 return data.email;
             }
-
+            
             // Fallback generation
             const username = this.generateRandomString(10) + Math.floor(Math.random() * 9999);
             return `${username}@tempmail.io`;
@@ -622,7 +614,7 @@ class YuenDispoMail {
     async getTempMailIOEmails(email) {
         try {
             const response = await fetch(`https://api.tempmail.io/v1/email/${email}/messages`);
-
+            
             if (response.ok) {
                 const data = await response.json();
                 return (data.messages || []).map(msg => ({
@@ -646,12 +638,12 @@ class YuenDispoMail {
             const response = await fetch('https://api.guerrillamail.com/ajax.php?f=get_email_address&lang=en', {
                 method: 'GET'
             });
-
+            
             if (response.ok) {
                 const data = await response.json();
                 return data.email_addr;
             }
-
+            
             // Fallback generation
             const username = this.generateRandomString(10) + Math.floor(Math.random() * 9999);
             return `${username}@guerrillamail.com`;
@@ -665,7 +657,7 @@ class YuenDispoMail {
         try {
             const [login] = email.split('@');
             const response = await fetch(`https://api.guerrillamail.com/ajax.php?f=get_email_list&offset=0&seq=1&lang=en`);
-
+            
             if (response.ok) {
                 const data = await response.json();
                 return (data.list || []).map(msg => ({
@@ -708,7 +700,8 @@ class YuenDispoMail {
                 <div class="email-from">From: ${this.escapeHtml(email.from)}</div>
                 ${codes.length > 0 ? `
                     <div class="email-codes">
-                        ${codes.map(code => `<span class="code-badge" onclick="event.stopPropagation(); navigator.clipboard.writeText('${code}'); this.textContent = 'Copied!'; setTimeout(() => this.textContent = '${code}', 1000)">${code}</span>`).join(' ')}
+                        <strong>Codes:</strong> 
+                        ${codes.map(code => `<span class="code-badge" onclick="navigator.clipboard.writeText('${code}'); this.textContent = 'Copied!'; setTimeout(() => this.textContent = '${code}', 1000)">${code}</span>`).join(' ')}
                     </div>
                 ` : ''}
                 <div class="email-preview">${this.escapeHtml(this.truncateText(email.content, 100))}</div>
@@ -968,3 +961,4 @@ document.head.appendChild(style);
 document.addEventListener('DOMContentLoaded', () => {
     new YuenDispoMail();
 });
+
